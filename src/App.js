@@ -1,29 +1,25 @@
-import React, { useState } from 'react';
-import { StatusBar, Dimensions } from 'react-native';
+import React, { useCallback, useState, useEffect } from 'react';
+import { StatusBar, Dimensions, Alert } from 'react-native';
 import styled, { ThemeProvider } from 'styled-components/native';
 import { theme } from './theme';
 import Input from './components/Input';
 import Task from './components/Task';
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import AppLoading from "expo-app-loading";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SplashScreen from 'expo-splash-screen';
 
-const Container = styled.View`
+const Container = styled.SafeAreaView`
   flex: 1;
   background-color: ${({ theme }) => theme.background};
   align-items: center;
-  justify-content: center;  
+  justify-content: flex-start;
 `;
 
 const Title = styled.Text`
-  width: ${({ width }) => width - 40}px;
   font-size: 40px;
   font-weight: 600;
   color: ${({ theme }) => theme.text};
   align-self: flex-start;
-  text-align: center;
-  margin: 10px 20px;
-  border-radius: 5px;
-  background-color: ${({ theme }) => theme.itemBackground};
+  margin: 0px 20px; /* y축 x축 */
 `;
 
 const List = styled.ScrollView`
@@ -31,17 +27,21 @@ const List = styled.ScrollView`
   width: ${({ width }) => width - 40}px;
 `;
 
-export default function App() {
+SplashScreen.preventAutoHideAsync();
+
+const App = () => {
   const width = Dimensions.get('window').width;
 
   const [isReady, setIsReady] = useState(false);
   const [newTask, setNewTask] = useState('');
-  const [tasks, setTasks] = useState({
-    // '1': { id: '1', text: 'React Native', completed: true },
-    // '2': { id: '2', text: '세계여행', completed: false },
-    // '3': { id: '3', text: '도서 100권 읽기', completed: false },
-  });
 
+  const [tasks, setTasks] = useState({});
+  // {
+  //   1: { id: '1', text: 'Hanbit', completed: false },
+  //   2: { id: '2', text: 'React Native', completed: true },
+  //   3: { id: '3', text: 'React Native Sample', completed: false },
+  //   4: { id: '4', text: 'Edit TODO ITEM', completed: false },
+  // }
   const _saveTasks = async tasks => {
     try {
       await AsyncStorage.setItem('tasks', JSON.stringify(tasks));
@@ -52,34 +52,74 @@ export default function App() {
   };
 
   const _loadTasks = async () => {
-    const loadedTasks = await AsyncStorage.getItem('tasks');
-    setTasks(JSON.parse(loadedTasks || '{}'));
+    try {
+      const loadedTasks = await AsyncStorage.getItem('tasks');
+      setTasks(JSON.parse(loadedTasks) || '{}');
+    } catch (e) {
+      console.error(e);
+    }
   };
+
+  useEffect(() => {
+    async function prepare() {
+      try {
+        await _loadTasks();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsReady(true);
+      }
+    }
+
+    prepare();
+  }, []);
+
+  const onLayoutRootView = useCallback(async () => {
+    if (isReady) {
+      await SplashScreen.hideAsync();
+    }
+  }, [isReady]);
+
+  if (!isReady) {
+    return null;
+  }
 
   const _addTask = () => {
     const ID = Date.now().toString();
     const newTaskObject = {
-      [ID]: { id: ID, text: newTask, completed: false }
+      [ID]: { id: ID, text: newTask, completed: false },
     };
+
     setNewTask('');
     _saveTasks({ ...tasks, ...newTaskObject });
   };
 
   const _deleteTask = id => {
-    const currentTasks = Object.assign({}, tasks);
-    delete currentTasks[id];
-    _saveTasks(currentTasks);
+    const currentTasks = { ...tasks }; //Object.assign({},tasks);
+    Alert.alert('', '삭제하시겠습니까?', [
+      {
+        text: '아니오',
+        onPress() {
+          console.log('아니오');
+        },
+      },
+      {
+        text: '예',
+        onPress() {
+          console.log('예');
+          delete currentTasks[id];
+          _saveTasks(currentTasks);
+        },
+      },
+    ]);
   };
-
-
   const _toggleTask = id => {
-    const currentTasks = Object.assign({}, tasks);
+    const currentTasks = { ...tasks };
     currentTasks[id]['completed'] = !currentTasks[id]['completed'];
     _saveTasks(currentTasks);
   };
-
   const _updateTask = item => {
-    const currentTasks = Object.assign({}, tasks);
+    const currentTasks = { ...tasks };
     currentTasks[item.id] = item;
     _saveTasks(currentTasks);
   };
@@ -92,20 +132,20 @@ export default function App() {
     setNewTask('');
   };
 
-  return isReady ? (
+  return (
     <ThemeProvider theme={theme}>
-      <Container>
+      <Container onLayout={onLayoutRootView}>
         <StatusBar
           barStyle="light-content"
-          backgroundcolor={theme.background}
+          backgroundColor={theme.background}
         />
-        <Title width={width}>버킷 리스트</Title>
+        <Title>TODO List</Title>
         <Input
-          placeholder="+ 항목 추가"
           value={newTask}
-          onChangeText={_handleTextChange}
-          onSubmitEditing={_addTask}
-          onBlur={_onBlur}
+          placeholder="+ Add a Task"
+          onChangeText={_handleTextChange} //수정시
+          onSubmitEditing={_addTask} //완료버튼
+          onBlur={_onBlur} //포커스 잃었을때
         />
         <List width={width}>
           {Object.values(tasks)
@@ -117,17 +157,12 @@ export default function App() {
                 deleteTask={_deleteTask}
                 toggleTask={_toggleTask}
                 updateTask={_updateTask}
-              />))
-          }
+              />
+            ))}
         </List>
       </Container>
     </ThemeProvider>
-  ) : (
-    <AppLoading
-      startAsync={_loadTasks}
-      onFinish={() => setIsReady(true)}
-      onError={console.error}
-    />
   );
-}
+};
 
+export default App;
